@@ -32,6 +32,7 @@
     "lib": ["esnext", "dom"],
     // 设置快捷导入
     "baseUrl": ".",
+    // ts路径映射
     "paths": {
       "@vue/*": ["packages/*/src"]
     }
