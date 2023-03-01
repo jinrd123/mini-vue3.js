@@ -29,6 +29,8 @@ export function track(target: object, key: unknown) {
   if (!activeEffect) {
     return
   }
+
+  // depMap即为响应式对象的属性与依赖的对应
   let depMap = targetMap.get(target)
   if (!depMap) {
     targetMap.set(target, (depMap = new Map()))
@@ -40,4 +42,19 @@ export function track(target: object, key: unknown) {
 }
 
 // 触发依赖
-export function trigger(target: object, key: unknown) {}
+// 核心逻辑即执行targetMap[target][key].fn(存在的话)
+export function trigger(target: object, key: unknown) {
+  const depsMap = targetMap.get(target)
+
+  if (!depsMap) {
+    return
+  }
+
+  const effect = depsMap.get(key) as ReactiveEffect
+
+  if (!effect) {
+    return
+  }
+
+  effect.fn()
+}
