@@ -1,1 +1,1 @@
-console.log('rollup build test')
+export { reactive } from '@vue/reactivity'
