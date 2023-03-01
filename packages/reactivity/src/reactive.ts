@@ -1,3 +1,4 @@
+import { isObject } from '@vue/shared'
 import { mutableHandlers } from './baseHandlers'
 
 // reactiveMap这个WeakMap对象用于记录所有创建的响应式对象，相当于一个缓存机制——>重复为一个对象创建响应式对象时直接返回原来已经创建的响应式对象
@@ -25,4 +26,8 @@ function createReactiveObject(
   proxyMap.set(target, porxy)
 
   return porxy
+}
+
+export const toReactive = <T extends unknown>(value: T): T => {
+  return isObject(value) ? reactive(value) : value
 }

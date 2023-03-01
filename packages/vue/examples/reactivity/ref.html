@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Document</title>
+    <script src="../../dist/vue.js"></script>
+  </head>
+  <body>
+    <div id="app"></div>
+  </body>
+  <script>
+    const { ref, effect } = Vue
+
+    // 测试用例内部逻辑
+    /**
+     * 1. 使用ref定义了一个响应式数据（因为ref接受的是复杂数据类型），相当于对obj.value为一个reactive对象
+     * 2. 使用effect函数跟新了effect.ts模块中的activeEffect
+     * 3. obj.value触发了obj.value的get
+     *      1. get函数中用obj.dep收集activeEffect
+     * 4. obj.value.name = '荣达'触发了obj.value的set，其实就是对reactive对象的set
+     *      1. 执行所有收集到的依赖
+     */
+    const obj = ref({
+      name: '张三'
+    })
+
+    effect(() => {
+      document.querySelector('#app').innerText = obj.value.name
+    })
+
+    setTimeout(() => {
+      obj.value.name = '荣达'
+    }, 2000)
+  </script>
+</html>
