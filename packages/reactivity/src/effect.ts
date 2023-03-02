@@ -1,3 +1,4 @@
+import { ComputedRefImpl } from './computed'
 import { createDep, Dep } from './dep'
 // targetMap为一个WeakMap，相当于维护的整个vue应用的响应式对象到对应的副作用函数的映射关系
 // targetMap:( 被Reactive方法包装的对象 --> Map:( 对象属性名 --> Set<effect> ) )
@@ -16,6 +17,8 @@ export let activeEffect: ReactiveEffect | undefined
 
 // effect(fn)中fn的包装类
 export class ReactiveEffect<T = any> {
+  computed?: ComputedRefImpl<T>
+
   constructor(public fn: () => T) {}
 
   run() {
