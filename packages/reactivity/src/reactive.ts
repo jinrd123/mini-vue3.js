@@ -28,6 +28,7 @@ function createReactiveObject(
   return porxy
 }
 
+// 对于简单数据类型直接返回
 export const toReactive = <T extends unknown>(value: T): T => {
   return isObject(value) ? reactive(value) : value
 }
