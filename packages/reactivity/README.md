@@ -26,14 +26,24 @@
 
 `ref`方法的主线逻辑为接收一个复杂数据类型或者简单数据类型，返回`RefImpl`类的实例，`ref`方法的参数作为`RefImpl`实例的私有属性`_value`进行维护，设置`get value`和`set value`进行拦截
 
-### （针对简单数据类型）依赖收集：
+#### （针对简单数据类型）依赖收集：
 
 `RefImpl`对象的`get value`中调用`trackRefValue(this)`。`reactive`方法中存放依赖的容器为`effect.ts`模块中的WeakMap对象`targetMap`，而使用`ref`方法创建的响应式数据经过`trackRefValue(this)`的逻辑，依赖都存放在响应式数据对应的`RefImpl`对象的`dep`集合中，`dep`即为一个`Set<ReactiveEffect>`，相当于`RefImpl`对象独立管理（存放）依赖。
 
-### （针对简单数据类型）依赖触发：
+#### （针对简单数据类型）依赖触发：
 
 `RefImpl`对象的`set value`中调用`triggerRefValue(this)`，即把`RefImpl`对象的`dep`集合转化为数组后全部执行
 
-### 针对复杂数据类型
+#### 针对复杂数据类型
 
 直接把`RefImpl`对象的`_value`属性初始化为一个`reactive`对象（直接借助`reactive`生成一个`Proxy`代理对象），通过`reactive`对象去对复杂数据的每个属性的get和set进行拦截（收集依赖/触发依赖）
+
+
+
+### 总结
+
+Vue里面的响应性数据可分为两种：
+
+* 复杂数据类型的响应性：通过`Proxy`对象实现对`get`与`set`行为的监听来实现依赖收集与依赖触发
+
+* 简单数据类型的响应性：通过对象实例的`get value`和`set value`实现依赖收集与触发，所以使用时需要我们手动触发即`ref数据.value`
