@@ -1,5 +1,8 @@
 import { ComputedRefImpl } from './computed'
 import { createDep, Dep } from './dep'
+
+export type EffectScheduler = (...args: any[]) => any
+
 // targetMap为一个WeakMap，相当于维护的整个vue应用的响应式对象到对应的副作用函数的映射关系
 // targetMap:( 被Reactive方法包装的对象 --> Map:( 对象属性名 --> Set<effect> ) )
 type KeyToDepMap = Map<any, Dep>
@@ -19,7 +22,10 @@ export let activeEffect: ReactiveEffect | undefined
 export class ReactiveEffect<T = any> {
   computed?: ComputedRefImpl<T>
 
-  constructor(public fn: () => T) {}
+  constructor(
+    public fn: () => T,
+    public scheduler: EffectScheduler | null = null
+  ) {}
 
   run() {
     activeEffect = this
@@ -79,5 +85,9 @@ export function triggerEffects(dep: Dep) {
 }
 
 export function triggerEffect(effect: ReactiveEffect) {
-  effect.run()
+  if (effect.scheduler) {
+    effect.scheduler()
+  } else {
+    effect.run()
+  }
 }

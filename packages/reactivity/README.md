@@ -47,3 +47,228 @@ Vue里面的响应性数据可分为两种：
 * 复杂数据类型的响应性：通过`Proxy`对象实现对`get`与`set`行为的监听来实现依赖收集与依赖触发
 
 * 简单数据类型的响应性：通过对象实例的`get value`和`set value`实现依赖收集与触发，所以使用时需要我们手动触发即`ref数据.value`
+
+
+
+
+
+
+
+## computed与watch
+
+
+
+### computed
+
+
+
+先来回顾一下`reactive`与`ref`的响应式大体逻辑：我们`reactive`或者`ref`函数接收一个变量使之成为响应式变量，本质上其实是为这个变量收集`依赖`（`副作用`），不管是在`RefImpl`对象的`dep`中还是在`targetMap`容器中。什么时候收集，自然是访问这些响应式变量的时候，访问就相当于其他地方用到它们了，`依赖`是一个`ReactiveEffect`对象，本质上其实就是对一个函数的包装，当访问`reactive`或者`ref`对象的时候，就把`依赖`收集起来。
+
+但是`reactive`函数和`ref`函数的调用（响应式对象的创建）本身不会产生`依赖`（`副作用`），暂时需要我们手动生成`副作用`函数，即调用`effect`函数，以测试用例`ref.html`为例：
+
+~~~html
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Document</title>
+    <script src="../../dist/vue.js"></script>
+  </head>
+  <body>
+    <div id="app"></div>
+  </body>
+  <script>
+    const { ref, effect } = Vue
+
+    const obj = ref('荣达') // 我们创建了一个响应式对象obj
+
+    effect(() => { // 我们手动调用effect方法生成一个副作用对象
+      document.querySelector('#app').innerText = obj.value // 为了让这个副作用对象被obj收集（成为obj的副作用），我们在回调函数中对obj执行get行为——obj.value
+    })
+
+    setTimeout(() => {
+      obj.value = '荣达大佬' // 触发obj的set行为，执行obj所收集到的所有“副作用”，也就是重新执行effect里的方法，文本内容变为荣达大佬
+    }, 2000)
+  </script>
+</html>
+~~~
+
+
+
+然后我们再来审视`computed`方法创建的响应式对象与前两者有什么异同：
+
+~~~typescript
+export function computed(getterOrOptions) { // 一般情况下，computed方法接收一个函数为参数，就是创建一个ComputedRefImpl对象
+  let getter
+
+  const onlyGetter = isFunction(getterOrOptions)
+
+  if (onlyGetter) {
+    getter = getterOrOptions
+  }
+
+  const cRef = new ComputedRefImpl(getter)
+
+  return cRef
+}
+
+// 创建的这个ComputedRefImpl对象与RefImpl最核心的一个区别就是：这个对象本身有个effect属性，也就是一个“依赖/副作用”对象
+export class ComputedRefImpl<T> {
+  public dep?: Dep = undefined
+
+  private _value!: T
+
+  public readonly effect: ReactiveEffect<T>
+
+  public readonly __v_isRef = true
+
+  // true 表示需要重新执行run方法
+  public _dirty = true
+
+  constructor(getter) {
+    this.effect = new ReactiveEffect(getter, () => {
+      if (!this._dirty) {
+        this._dirty = true
+        triggerRefValue(this)
+      }
+    })
+    // 一个循环引用标记吧，应该没啥用
+    this.effect.computed = this
+  }
+
+  get value() {
+    trackRefValue(this)
+    if (this._dirty) {
+      this._dirty = false
+      this._value = this.effect.run()
+    }
+    return this._value
+  }
+}
+~~~
+
+
+
+我们来看看创建`ComputedRefImpl`对象时具体做了什么：
+
+~~~typescript
+public _dirty = true
+
+constructor(getter) {
+  // 说白了就是根据传给computed函数的函数参数getter创建一个依赖对象，但是相比于我们以前手动执行effect函数创建的依赖对象，ComputedRefImpl的依赖对象多了第二个参数，即调度器scheduler属性
+  this.effect = new ReactiveEffect(getter, () => {
+    if (!this._dirty) {
+      this._dirty = true
+      triggerRefValue(this)
+    }
+  })
+  // 一个循环引用标记吧，应该没啥用
+  this.effect.computed = this
+}
+~~~
+
+`scheduler`本身也是一个函数，拥有`scheduler`的`ReactiveEffect`对象在被`triggerEffect(effect: ReactiveEffect)`执行时优先执行`scheduler`函数而不是第一个函数参数
+
+
+
+所以为什么要给`ComputedRefImpl`对象内置一个`effect`依赖对象呢？——**给其它响应式对象使用，换句话说，作为其他响应式对象的依赖**
+
+其它响应式对象指谁呢？——如**`computed(() => refA.name + refB.name)`**，其它对象就是指`refA`与`refB`
+
+
+
+我们根据测试用例`computed.html`来具体分析：
+
+~~~html
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Document</title>
+    <script src="../../dist/vue.js"></script>
+  </head>
+  <body>
+    <div id="app"></div>
+  </body>
+  <script>
+    const { reactive, effect, computed } = Vue
+		
+    // reactive创建一个响应式对象obj（Proxy）
+    const obj = reactive({
+      name: '张三'
+    })
+		
+    // 创建一个ComputedRefImpl对象，这个对象的getter函数中对obj对象进行了get行为（obj.name）
+    const computedObj = computed(() => {
+      return '姓名:' + obj.name
+    })
+		
+    // 用effect方法为ComputedRefImpl对象手动创建一个副作用
+    // 然后effect(fn)，fn被执行，触发ComputedRefImpl对象的get行为使此副作用被ComputedRefImpl对象的dep收集，对应---- 1 ----
+    // 又因为一开始_dirty初始化为true，切换_dirty为false的同时执行effect.fn，也就是传给computed函数的getter参数，对应 ---- 2 ----，这一执行getter，就导致getter中所有用到的响应式对象把ComputedRefImpl对象的ReactiveEffect依赖对象给收集了
+    // 这就导致：以后响应式数据一旦触发了set行为，就会触发ComputedRefImpl对象的ReactiveEffect依赖
+    effect(() => {
+      document.querySelector('#app').innerText = computedObj.value
+    })
+		
+    // obj.name触发响应式对象的set行为，他的依赖集合中有ComputedRefImpl对象的ReactiveEffect依赖对象，但是因为此依赖有scheduler，所以triggerEffect(effect: ReactiveEffect)触发此依赖时，执行scheduler，scheduler的逻辑，对应 ---- 3 ----：
+    // 1. 修改_dirty为true
+    // 2. 触发ComputedRefImpl对象本身的副作用，也就是上面effect函数传入的函数，最终导致视图修改
+    setTimeout(() => {
+      obj.name = '李四'
+    }, 2000)
+  </script>
+</html>
+~~~
+
+对照代码：
+
+~~~typescript
+export class ComputedRefImpl<T> {
+  public dep?: Dep = undefined
+
+  private _value!: T
+
+  public readonly effect: ReactiveEffect<T>
+
+  public readonly __v_isRef = true
+
+  // true 表示需要重新执行run方法
+  public _dirty = true
+
+  constructor(getter) {
+    this.effect = new ReactiveEffect(getter, () => {
+      if (!this._dirty) {
+        this._dirty = true // ---- 3 ----
+        triggerRefValue(this)
+      }
+    })
+    this.effect.computed = this
+  }
+
+  get value() {
+    trackRefValue(this) // ---- 1 ----
+    if (this._dirty) {
+      this._dirty = false
+      this._value = this.effect.run() // ---- 2 ----
+    }
+    return this._value
+  }
+}
+~~~
+
+
+
+关于`ComputedRefImpl`对象自身的脏变量`_dirty`的理解：
+
+`ComputedRefImpl`对象自身的核心逻辑就是维护一个`_value`值，然后对其进行get的时候返回这个值。
+
+`_value`值是依赖`getter`函数（`computed`函数接收的函数参数）的，但是`getter`函数可能是依赖其他响应式对象的，其它响应式对象值更改，我们就要更改`_value`，所以`_value`的值是具有时效性的，我们用`_dirty`来标识此事的`_value`需不需要重新计算，`_dirty:true`，表示`_value`“脏”了，需要重新计算：
+
+* `ComputedRefImpl`创建之初，`_value`还没有被计算，`_dirty`值自然初始化为`true`
+* `ComputedRefImpl`被`get`之后，`_value`已经被计算，`_dirty`为`false`，此时访问`ComputedRefImpl`对象的值返沪`_value`即可，无需重新计算
+* 一旦（收集了`ComputedRefImpl.effect`的）响应式对象发生改变，就需要把`_dirty`置为`true`，让`ComputedRefImpl`下一次被get时重新计算`_value`

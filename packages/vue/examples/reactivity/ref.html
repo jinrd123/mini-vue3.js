@@ -19,7 +19,7 @@
      * 2. 使用effect函数跟新了effect.ts模块中的activeEffect并且执行effect(fn)中的fn函数
      *      1. fn函数中obj.value触发了obj.value的get
      *      2. get函数中用obj.dep收集activeEffect
-     *      3. 视图初次渲染（我们上来就看到了张三）
+     *      3. fn函数执行，视图初次渲染（我们上来就看到了张三）
      * 3. obj.value.name = '荣达'触发了obj.value的set，其实就是对reactive对象的set
      *      1. 执行所有收集到的依赖，相当于重新执行effect(fn)中的fn
      *      2. 视图重新渲染为荣达
