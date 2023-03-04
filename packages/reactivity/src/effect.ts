@@ -1,3 +1,4 @@
+import { extend } from '@vue/shared'
 import { ComputedRefImpl } from './computed'
 import { createDep, Dep } from './dep'
 
@@ -14,10 +15,15 @@ export interface ReactiveEffectOptions {
 }
 
 // effect函数的核心逻辑就是：（借助包装类）1.更新此模块的activeEffect 2. 调用fn
-export function effect<T = any>(fn: () => T, option?: ReactiveEffectOptions) {
+export function effect<T = any>(fn: () => T, options?: ReactiveEffectOptions) {
   const _effect = new ReactiveEffect(fn)
 
-  if (!option || !option.lazy) {
+  // 给effect函数传入的scheduler函数合并给ReactiveEffect对象（ReactiveEffect对象可以手动添加调度器函数）
+  if (options) {
+    extend(_effect, options)
+  }
+
+  if (!options || !options.lazy) {
     _effect.run()
   }
 }

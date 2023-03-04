@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Document</title>
+    <script src="../../dist/vue.js"></script>
+  </head>
+  <body>
+    <div id="app"></div>
+  </body>
+  <script>
+    // 测试scheduler的控制执行顺序（修改逻辑为异步任务）的功能
+    // 输出：1, 代码结束, 2
+    const { reactive, effect } = Vue
+
+    const obj = reactive({
+      count: 1
+    })
+
+    effect(
+      () => {
+        console.log(obj.count) // 输出 1
+      },
+      {
+        scheduler() {
+          setTimeout(() => {
+            cosole.log(obj.count)
+          })
+        }
+      }
+    )
+
+    obj.count = 2 // 执行副作用的调度器函数，但是scheduler是一个setTimeout异步任务，所以最后输出 2
+    console.log('代码结束') // 输出 代码结束
+  </script>
+</html>
