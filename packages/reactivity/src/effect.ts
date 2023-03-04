@@ -79,8 +79,16 @@ export function trigger(target: object, key: unknown) {
 export function triggerEffects(dep: Dep) {
   const effects = Array.isArray(dep) ? dep : [...dep]
 
+  // 依次触发计算属性的依赖与普通依赖
   for (const effect of effects) {
-    triggerEffect(effect)
+    if (effect.computed) {
+      triggerEffect(effect)
+    }
+  }
+  for (const effect of effects) {
+    if (!effect.computed) {
+      triggerEffect(effect)
+    }
   }
 }
 
