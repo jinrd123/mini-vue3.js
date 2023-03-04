@@ -8,11 +8,18 @@ export type EffectScheduler = (...args: any[]) => any
 type KeyToDepMap = Map<any, Dep>
 const targetMap = new WeakMap<any, KeyToDepMap>()
 
+export interface ReactiveEffectOptions {
+  lazy?: boolean
+  scheduler?: EffectScheduler
+}
+
 // effect函数的核心逻辑就是：（借助包装类）1.更新此模块的activeEffect 2. 调用fn
-export function effect<T = any>(fn: () => T) {
+export function effect<T = any>(fn: () => T, option?: ReactiveEffectOptions) {
   const _effect = new ReactiveEffect(fn)
 
-  _effect.run()
+  if (!option || !option.lazy) {
+    _effect.run()
+  }
 }
 
 // 记录上一个effect调用的对应包装类
