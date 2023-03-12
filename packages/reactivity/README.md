@@ -272,3 +272,165 @@ export class ComputedRefImpl<T> {
 * `ComputedRefImpl`创建之初，`_value`还没有被计算，`_dirty`值自然初始化为`true`
 * `ComputedRefImpl`被`get`之后，`_value`已经被计算，`_dirty`为`false`，此时访问`ComputedRefImpl`对象的值返沪`_value`即可，无需重新计算
 * 一旦（收集了`ComputedRefImpl.effect`的）响应式对象发生改变，就需要把`_dirty`置为`true`，让`ComputedRefImpl`下一次被get时重新计算`_value`
+
+
+
+
+
+### watch
+
+
+
+`watch`的实现思路与`computed`非常相似：`watch`函数和`computed`函数的执行都内部创建了一个独立的`ReactiveEffect`副作用对象，`computed`是把这个依赖挂在`computedRefImpl`对象上，而一般场景下`watch`是不需要用一个变量接收返回值的，所以`watch`也没有返回值（有返回值，但是起码不用像`computed`那样为返回值创建一个类），所以`watch`的`ReactiveEffect`对象就单纯创建出来即可
+
+两者的副作用对象（依赖）都是让其它响应式对象去收集的，`computed`是让所有参数函数体内用到的响应式变量收集，`watch`就是让第一个参数指定的响应式变量收集。
+
+测试用例`watch.html`:
+
+~~~html
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Document</title>
+    <script src="../../dist/vue.js"></script>
+  </head>
+  <body>
+    <div id="app"></div>
+  </body>
+  <script>
+    const { reactive, watch } = Vue
+		
+    // 创建了一个响应式变量obj
+    const obj = reactive({
+      name: '张三'
+    })
+
+    // 执行watch函数，说白了就是执行doWatch
+    // doWatch中的核心逻辑，创建一个ReactiveEffect对象，即new ReactiveEffect(getter, scheduler)对应---------- 1 ----------
+    // 这个ReactiveEffect对象是有scheduler调度器的，我们知道new ReactiveEffect的逻辑是上来执行一次getter，往后再触发这个依赖时就执行scheduler了，所以我们要对getter进行加工，即让被监听对象obj的所有属性都收集到这个依赖（触发obj所有属性的get行为），对应---------- 2 ----------
+    // 以后响应式数据发生变化，触发了watch创建的这个依赖后，执行的scheduler，说白了就是job函数，对应---------- 3 ----------，scheduler就是用queuePreFlushCb(job)改变了一下job的执行顺序（使job变成微任务），job函数呢，说白了就是对watch的第二个函数参数cb的包装，说白了还是调用cb，对应 ---------- 4 ----------，包装的目的是维护给cb提供的newValue和oldValue参数（维护oldValue对应---------- 5 ---------- && 计算newValue对应---------- 6 ----------）
+    watch(
+      obj,
+      (value, oldValue) => {
+        console.log('watch监听被触发')
+        console.log('value：', value)
+      },
+      // 对于watch的第三个配置对象参数的immediate属性，我们根据其true或者false决定是不是上来就执行一次job函数即可，对应---------- 7 ----------
+      {
+        immediate: true
+      }
+    )
+		
+    // 因为watch函数创建的ReactiveEffect依赖对象已经被obj的所有属性收集，自然obj.name = "xxx"后触发watch的回调函数
+    setTimeout(() => {
+      obj.name = '荣达'
+    }, 2000)
+  </script>
+</html>
+~~~
+
+
+
+`packages/compiler-dom/src/apiWatch.ts`：
+
+~~~typescript
+import { queuePreFlushCb } from '@vue/runtime-core'
+import { EMPTY_OBJ, hasChanged, isObject } from '@vue/shared'
+import { ReactiveEffect } from 'packages/reactivity/src/effect'
+import { isReactive } from 'packages/reactivity/src/reactive'
+
+export interface WatchOptions<immediate = boolean> {
+  immediate?: immediate
+  deep?: boolean
+}
+
+export function watch(source, cb: Function, options?: WatchOptions) {
+  return doWatch(source, cb, options)
+}
+
+function doWatch(
+  source,
+  cb: Function,
+  { immediate, deep }: WatchOptions = EMPTY_OBJ
+) {
+  let getter: () => any
+
+  if (isReactive(source)) {
+    getter = () => source
+    deep = true
+  } else {
+    getter = () => {}
+  }
+
+  if (cb && deep) {
+    // 因为我们watch监听一个响应式对象时，默认就是监听其所有属性（包括对象属性的属性）的变化然后执行回调
+    // getter函数是用来创建watch的ReactiveEffect对象的第一个参数，所以我们要让监听的所有响应式数据收集到这个ReactiveEffect对象（watch的副作用）
+    // 所以我们用traverse包装getter，即处发监听的对象的所有属性的getter行为
+    const baseGetter = getter
+    getter = () => traverse(baseGetter()) // ---------- 2 ----------
+  }
+
+  // oldValue变量用来记录上一次source（getter函数）的值，在执行job，即传给watch回调作为参数
+  let oldValue = {}
+
+  // job函数的核心逻辑：1、 更新oldValue 2、 执行cb，即watch的参数函数
+  // 可以理解为job就是对上面两个行为的捆绑
+  const job = () => { // ---------- 3 ----------
+    if (cb) {
+      const newValue = effect.run() // ---------- 6 ----------
+      if (deep || hasChanged(newValue, oldValue)) {
+        cb(newValue, oldValue) // ---------- 4 ----------
+        oldValue = newValue // ---------- 5 ----------
+      }
+    }
+  }
+
+  // 被监听的响应式数据发生变化时触发自己的依赖（包含收集到的watch依赖），触发watch依赖就是执行这个scheduler函数
+  let scheduler = () => queuePreFlushCb(job) // 从这里可以得知 —— （watch被监听的响应式数据发生变化时）watch的副作用作为本轮宏任务同步代码之后的微任务执行
+
+  const effect = new ReactiveEffect(getter, scheduler) // ---------- 1 ----------
+
+  // 处理配置对象的属性
+  if (cb) {
+    // 如果immediate为true，执行一次job（更新oldValue + 执行cb）；如果immediate为false，只记录一下oldValue即可
+    if (immediate) { // ---------- 7 ----------
+      job()
+    } else {
+      oldValue = effect.run()
+    }
+  } else {
+    effect.run()
+  }
+
+  // watch函数的返回值，emmm好像基本用不到，至于返回的这个effect.stop是个什么也无所谓了（ReactiveEffect类里也没具体实现stop方法）
+  return () => {
+    effect.stop()
+  }
+}
+
+// 接收一个变量，如果是对象就深层次遍历其所有属性（触发所有属性的get行为）
+export function traverse(value: unknown) {
+  if (!isObject(value)) {
+    return value
+  }
+
+  for (const key in value as object) {
+    traverse((value as object)[key])
+  }
+
+  return value
+}
+~~~
+
+
+
+## 总结
+
+
+
+`ref`与`reactive`同性质，本质上就是创建响应时数据，即在对其get行为时收集依赖，对其set行为时触发它收集到的依赖
+
+`computed`与`watch`类似，本质上都是创建一个`ReactiveEffect`依赖对象，然后让其它的响应式变量去收集，当响应式变量的set行为被触发时，触发`computed`与`watch`创建的副作用对象，即`computed`的`ReactiveEffect`的函数逻辑是重新完成计算，而`watch`的`ReactiveEffect`的函数逻辑是执行一遍传给`watch`的第二个函数参数。

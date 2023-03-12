@@ -5,6 +5,10 @@ import { mutableHandlers } from './baseHandlers'
 // plus：WeakMap与Map的区别除了key为object之外，还就是WeakMap中key是一个弱引用，即如果此引用没有被使用时将会被垃圾回收机制自动回收，而Map中的key会影响垃圾回收机制导致其无法被自动回收，所以说选择WeakMap也有一定性能优化的作用
 export const reactiveMap = new WeakMap<object, any>()
 
+export const enum ReactiveFlags {
+  IS_REACTIVE = '__v_isReactive'
+}
+
 // reactive方法总目标就是接收一个对象，为其创建一个proxy代理对象
 export function reactive(target: object) {
   return createReactiveObject(target, mutableHandlers, reactiveMap)
@@ -21,14 +25,22 @@ function createReactiveObject(
   }
 
   // 创建Proxy对象的核心逻辑就是给target设置一个get和set，所以baseHandler对象的作用就是提供get和set
-  const porxy = new Proxy(target, baseHandlers)
+  const proxy = new Proxy(target, baseHandlers)
 
-  proxyMap.set(target, porxy)
+  proxyMap.set(target, proxy)
 
-  return porxy
+  // 增加一个reactive对象标识
+  proxy[ReactiveFlags.IS_REACTIVE] = true
+
+  return proxy
 }
 
 // 对于简单数据类型直接返回
 export const toReactive = <T extends unknown>(value: T): T => {
   return isObject(value) ? reactive(value) : value
+}
+
+// 判断是否为reactive对象
+export function isReactive(value): boolean {
+  return !!(value && value[ReactiveFlags.IS_REACTIVE])
 }
