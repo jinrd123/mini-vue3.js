@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Document</title>
+    <script src="../../dist/vue.js"></script>
+  </head>
+
+  <body>
+    <div id="app"></div>
+  </body>
+
+  <script>
+    const { h, Text, Comment, Fragment } = Vue
+
+    // 对于文本，注释，以及Fragment类型的vnode，主要区别就是它们的type为Vue3提供的Symbol类型
+    const vnodeText = h(Text, '这是一个Text')
+    console.log(vnodeText)
+
+    const vnodeComment = h(Comment, '这是一个Comment')
+    console.log(vnodeComment)
+
+    const vnodeFragment = h(Fragment, '这是一个Fragment')
+    console.log(vnodeFragment)
+  </script>
+</html>
