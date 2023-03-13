@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Document</title>
+    <script src="../../dist/vue.js"></script>
+  </head>
+
+  <body>
+    <div id="app"></div>
+  </body>
+
+  <script>
+    const { h } = Vue
+    const vnode = h(
+      // 验证vue3对class（与style）的增强（支持数组、对象）
+      'div',
+      {
+        class: [
+          {
+            red: true
+          },
+          {
+            blue: true
+          },
+          {
+            yellow: false
+          }
+        ]
+      },
+      'hello render'
+    )
+    console.log(vnode) // 处理后的vnode.porps: {class: 'red blue'}
+  </script>
+</html>

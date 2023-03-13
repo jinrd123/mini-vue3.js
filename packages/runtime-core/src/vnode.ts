@@ -1,4 +1,5 @@
 import { isArray, isFunction, isObject, isString } from '@vue/shared'
+import { normalizeClass } from 'packages/shared/src/normalizePorp'
 import { ShapeFlags } from 'packages/shared/src/shapeFlags'
 
 export const Fragment = Symbol('Fragment')
@@ -18,6 +19,14 @@ export function isVNode(value: any): value is VNode {
 }
 
 export function createVNode(type, props, children): VNode {
+  // 对class与style进行增强处理，所谓class增强，就是指class不光支持字符串，还支持对象、数组
+  if (props) {
+    let { class: klass, style } = props
+    if (klass && !isString(klass)) {
+      props.class = normalizeClass(klass)
+    }
+  }
+
   // 用二进制数相或得到vnode.shapeFlag，所以vnode.shapeFlag通过二进制的不同位携带了多种vnode的描述信息
   // 初步构造vnode.shapeFlag信息：type如果是string类型，那么我们初步判定要构造的vnode应该是一个ELEMENT元素类型
   const shapeFlag = isString(type)
