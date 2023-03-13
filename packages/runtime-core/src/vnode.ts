@@ -1,4 +1,4 @@
-import { isArray, isFunction, isString } from '@vue/shared'
+import { isArray, isFunction, isObject, isString } from '@vue/shared'
 import { ShapeFlags } from 'packages/shared/src/shapeFlags'
 
 export interface VNode {
@@ -16,7 +16,11 @@ export function isVNode(value: any): value is VNode {
 export function createVNode(type, props, children): VNode {
   // 用二进制数相或得到vnode.shapeFlag，所以vnode.shapeFlag通过二进制的不同位携带了多种vnode的描述信息
   // 初步构造vnode.shapeFlag信息：type如果是string类型，那么我们初步判定要构造的vnode应该是一个ELEMENT元素类型
-  const shapeFlag = isString(type) ? ShapeFlags.ELEMENT : 0
+  const shapeFlag = isString(type)
+    ? ShapeFlags.ELEMENT
+    : isObject(type)
+    ? ShapeFlags.STATEFUL_COMPONENT
+    : 0
 
   return createBaseVNode(type, props, children, shapeFlag)
 }
@@ -39,7 +43,7 @@ function createBaseVNode(type, props, children, shapeFlag) {
 export function normalizeChildren(vnode: VNode, children: unknown) {
   let type = 0
 
-  if (children === null) {
+  if (children == null) {
     children = null
   } else if (isArray(children)) {
     type = ShapeFlags.ARRAY_CHILDREN
@@ -52,4 +56,9 @@ export function normalizeChildren(vnode: VNode, children: unknown) {
 
   vnode.children = children
   vnode.shapeFlag |= type
+  /**
+   *  type为text判定为标签 1 + children为text 8 =>  9
+   *  type为text判定为标签 1 + children为Array 16 =>  17
+   *  type为对象判定为有状态组件 4 + children为undefined 0 => 4
+   */
 }
