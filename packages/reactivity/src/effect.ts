@@ -1,4 +1,4 @@
-import { extend } from '@vue/shared'
+import { extend, isArray } from '@vue/shared'
 import { ComputedRefImpl } from './computed'
 import { createDep, Dep } from './dep'
 
@@ -92,7 +92,7 @@ export function trigger(target: object, key: unknown) {
 
 // 执行Set<effect>集合中所有effect相关的逻辑
 export function triggerEffects(dep: Dep) {
-  const effects = Array.isArray(dep) ? dep : [...dep]
+  const effects = isArray(dep) ? dep : [...dep]
 
   // 依次触发计算属性的依赖与普通依赖
   for (const effect of effects) {

@@ -14,13 +14,13 @@
 
   <script>
     const { h } = Vue
+    // 同h-element.html中的分析，vnode.shapeFlag 为 1 ｜ 16 === 17
     const vnode = h(
-      // 构造vnode时，'div'作为type值（string类型）；children值为'hello render'（string类型），vnode.shapeFlag的值为ShapeFlags.ELEMENT | ShapeFlags.TEXT_CHILDREN，即1 ｜ 8 === 9
       'div',
       {
         class: 'test'
       },
-      'hello render'
+      [h('p', 'p1'), h('p', 'p2'), h('p', 'p3')]
     )
     console.log(vnode)
   </script>

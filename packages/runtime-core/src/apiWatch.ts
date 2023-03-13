@@ -1,4 +1,4 @@
-import { queuePreFlushCb } from '@vue/runtime-core'
+import { queuePreFlushCb } from './scheduler'
 import { EMPTY_OBJ, hasChanged, isObject } from '@vue/shared'
 import { ReactiveEffect } from 'packages/reactivity/src/effect'
 import { isReactive } from 'packages/reactivity/src/reactive'
