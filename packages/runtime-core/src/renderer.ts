@@ -1,6 +1,6 @@
 import { EMPTY_OBJ } from '@vue/shared'
 import { ShapeFlags } from 'packages/shared/src/shapeFlags'
-import { Text, Comment, Fragment } from './vnode'
+import { Text, Comment, Fragment, isSameVNodeType } from './vnode'
 export interface RendererOptions {
   /**
    * 为指定的 element 的 props 打补丁
@@ -18,6 +18,8 @@ export interface RendererOptions {
    * 创建 element
    */
   createElement(type: string)
+
+  remove(el: Element)
 }
 
 export function createRenderer(options: RendererOptions) {
@@ -29,7 +31,8 @@ function baseCreateRenderer(options: RendererOptions): any {
     insert: hostInsert,
     patchProp: hostPatchProp,
     createElement: hostCreateElement,
-    setElementText: hostSetElementText
+    setElementText: hostSetElementText,
+    remove: hostRemove
   } = options
 
   const processElement = (oldVNode, newVNode, container, anchor) => {
@@ -132,6 +135,14 @@ function baseCreateRenderer(options: RendererOptions): any {
       return
     }
 
+    // 两次render不同的vnode，即type不同（标签不同）或者key（就是v-for中那个）不同
+    if (oldVNode && !isSameVNodeType(oldVNode, newVNode)) {
+      // 先unmount卸载，即容器中删除这个dom节点（vnode节点的el属性绑定了对应的dom元素，然后通过dom的parentNode拿到父dom，父dom执行removeChild完成卸载）
+      unmount(oldVNode)
+      // 更新oldVNode为null，即container._value为null，那么下一次container再执行render时就会走挂载逻辑，而不是patch更新了
+      oldVNode = null
+    }
+
     const { type, shapeFlag } = newVNode
     switch (type) {
       case Text:
@@ -146,6 +157,10 @@ function baseCreateRenderer(options: RendererOptions): any {
         } else if (shapeFlag & ShapeFlags.COMPONENT) {
         }
     }
+  }
+
+  const unmount = vnode => {
+    hostRemove(vnode.el)
   }
 
   const render = (vnode, container) => {
