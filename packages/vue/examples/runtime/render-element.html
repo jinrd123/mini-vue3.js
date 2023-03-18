@@ -13,6 +13,7 @@
   </body>
 
   <script>
+    // 测试render函数的挂载（初次渲染）操作
     // 实现render函数的导出：
     // runtime-core中createRenderer函数最终返回了一个对象，里面包含render方法
     // 但这里我们拿到的render函数是runtime-dom（runtime-dom指浏览器宿主环境下，与之对应的还有服务端渲染时node环境）中导出的render函数，这个render函数实际上就是给了createRenderer函数一些浏览器环境下的入参生成的对象中的render方法
