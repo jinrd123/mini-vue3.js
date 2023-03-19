@@ -17,5 +17,11 @@ export const nodeOps = {
     if (parent) {
       parent.removeChild(child)
     }
+  },
+
+  createText: text => document.createTextNode(text),
+
+  setText: (node, text) => {
+    node.nodeValue = text
   }
 }
