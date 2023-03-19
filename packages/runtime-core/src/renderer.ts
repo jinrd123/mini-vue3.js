@@ -24,6 +24,8 @@ export interface RendererOptions {
   createText(text: string)
 
   setText(node, text)
+
+  createComment(text: string)
 }
 
 export function createRenderer(options: RendererOptions) {
@@ -38,8 +40,18 @@ function baseCreateRenderer(options: RendererOptions): any {
     setElementText: hostSetElementText,
     remove: hostRemove,
     createText: hostCreateText,
-    setText: hostSetText
+    setText: hostSetText,
+    createComment: hostCreateComment
   } = options
+
+  const processCommentNode = (oldVNode, newVNode, container, anchor) => {
+    if (oldVNode == null) {
+      newVNode.el = hostCreateComment(newVNode.children)
+      hostInsert(newVNode.el, container, anchor)
+    } else {
+      newVNode.el = oldVNode.el
+    }
+  }
 
   const processText = (oldVNode, newVNode, container, anchor) => {
     // 挂载
@@ -168,6 +180,7 @@ function baseCreateRenderer(options: RendererOptions): any {
         processText(oldVNode, newVNode, container, anchor)
         break
       case Comment:
+        processCommentNode(oldVNode, newVNode, container, anchor)
         break
       case Fragment:
         break
