@@ -117,6 +117,7 @@ function baseCreateRenderer(options: RendererOptions): any {
         // TODO: 卸载旧子节点
       }
 
+      // 新旧子节点不同（旧的不为TEXT_CHILDREN）
       if (c2 !== c1) {
         // 挂载新子节点的文本
         hostSetElementText(container, c2)
@@ -170,6 +171,7 @@ function baseCreateRenderer(options: RendererOptions): any {
     if (shapeFlag & ShapeFlags.TEXT_CHILDREN) {
       hostSetElementText(el, vnode.children)
     } else if (shapeFlag & ShapeFlags.ARRAY_CHILDREN) {
+      // ---------- 这里是不是漏下了 ----------
     }
     // 3. 设置props
     if (props) {
@@ -185,6 +187,10 @@ function baseCreateRenderer(options: RendererOptions): any {
     if (oldVNode === newVNode) {
       return
     }
+
+    // ---------- 正确的理解 ----------
+    // 这里的oldVNode决定了下面switch中具体进行patch时是执行挂载还是打补丁patch
+    // 所以如果oldVNode与newVNode的type都不一样，那肯定不是打补丁的逻辑了，直接下面的所有细节都走挂载逻辑即可
 
     // 两次render不同的vnode，即type不同（标签不同）或者key（就是v-for中那个）不同
     if (oldVNode && !isSameVNodeType(oldVNode, newVNode)) {
