@@ -253,3 +253,216 @@ const vnode = {
 } as VNode
 ~~~
 
+
+
+
+
+# render函数
+
+
+
+## render函数的导出
+
+`render`函数是`runtime-core`模块中`createRenderer`函数返回的对象中的一个属性方法，然后我们在`runtime-dom`中进行对外导出（`runtime-dom`模块提供浏览器宿主下的运行环境，比如浏览器环境下具体的`dom操作`的方法）
+
+## render函数逻辑思路
+
+
+
+### render函数
+
+~~~typescript
+const render = (vnode, container) => {
+  if (vnode === null) {
+    // 卸载
+    if (container._value) {
+      unmount(container._value)
+    }
+  } else {
+    patch(container._value || null, vnode, container)
+  }
+  container._value = vnode // 给container元素添加_value属性，从而记录本次render的vnode信息
+}
+~~~
+
+#### 分析：
+
+先说一下入参，`vnode`就是`h`函数创建出来的对象（是对一个dom的节点信息的描述），然后`container`就是一个真实dom节点，表示我们`render`函数要操作（挂载or卸载or打补丁）的“位置”。
+
+`render`函数的逻辑就是根据本次`render`的性质决定调用`unmount`或者`patch`，所谓性质就大致分为`挂载(patch)`、`卸载(unmount)`、`打补丁(patch)`等，当然这里`render`函数的“性质”是根据有没有传入`vnode`来判断的，这也只是一个最上层的判断，在整个`render`函数包括其`unmount`和`patch`等子函数中函数中一直都是秉承着区分`挂载`与`打补丁`从而进行不同处理的逻辑。
+
+`container`这个dom元素身上，每一次被`render`（当作`render`函数的参数）结束时，都会在dom上添加一个`_value`属性即记录这次`render`的`vnode`。这个`_value`属性就是我们在`patch`函数中进行前后对比，从而决定逻辑类型（`挂载 or 更新`）的依据，`_value`代表了上次`render`的信息。
+
+
+
+### unmount函数
+
+~~~typescript
+const unmount = vnode => {
+  hostRemove(vnode.el)
+}
+~~~
+
+#### 分析：
+
+`hostRemove`是`runtime-dom`模块具体提供的方法：
+
+~~~typescript
+remove: (child: Element) => {
+  const parent = child.parentNode
+  if (parent) {
+    parent.removeChild(child)
+  }
+}
+~~~
+
+这里`vnode.el`肯定是`patch`函数中某处的逻辑给`vnode`节点加上的属性，指向`vnode`实际渲染出来的dom元素，`remove方法`的逻辑就是通过真实dom的`parentNode`属性访问到父dom，父dom调用`removeChild`方法删除子节点
+
+
+
+### patch函数
+
+~~~typescript
+const patch = (oldVNode, newVNode, container, anchor = null) => {
+  if (oldVNode === newVNode) {
+    return
+  }
+
+  // ---------- 正确的理解 ----------
+  // 这里的oldVNode决定了下面switch中具体进行patch时是执行挂载还是打补丁patch
+  // 所以如果oldVNode与newVNode的type都不一样，那肯定不是打补丁的逻辑了，直接下面的所有细节都走挂载逻辑即可
+
+  // 两次render不同的vnode，即type不同（标签不同）或者key（就是v-for中那个）不同
+  if (oldVNode && !isSameVNodeType(oldVNode, newVNode)) {
+    // 先unmount卸载，即容器中删除这个dom节点（vnode节点的el属性绑定了对应的dom元素，然后通过dom的parentNode拿到父dom，父dom执行removeChild完成卸载）
+    unmount(oldVNode)
+    // 更新oldVNode为null，下面switch中进行具体情况的处理时，process函数中因为oldVNode为null，就会执行挂载逻辑，而非更新逻辑
+    oldVNode = null
+  }
+
+  const { type, shapeFlag } = newVNode
+  switch (type) {
+    case Text:
+      processText(oldVNode, newVNode, container, anchor)
+      break
+    case Comment:
+      processCommentNode(oldVNode, newVNode, container, anchor)
+      break
+    case Fragment:
+      processFragment(oldVNode, newVNode, container, anchor)
+      break
+    default:
+      if (shapeFlag & ShapeFlags.ELEMENT) {
+        processElement(oldVNode, newVNode, container, anchor)
+      } else if (shapeFlag & ShapeFlags.COMPONENT) {
+        processComponent(oldVNode, newVNode, container, anchor)
+      }
+  }
+}
+~~~
+
+#### 分析：
+
+首先通过`oldVNode && !isSameVNodeType(oldVNode, newVNode)`判断如果`oldVNode`与`newVNode`的`type`属性都不一样，那么就把`oldVNode`设置为`null`，这是让下面的`process`函数进行判断后执行挂载操作（而非更新）
+
+下面通过`switch`判断`newVNode`的`type`与`shapeFlag`，`case Text & case Comment & case Fragment`这三种情况都是基本节点，没有`children`，所以无需涉及`shapeFlag`的判断，最后`default`中根据`shapeFlag`判断走`processElement`逻辑还是`processComponent`的逻辑。
+
+`processText & processCommentNode & processFragment`：
+
+~~~typescript
+const processFragment = (oldVNode, newVNode, container, anchor) => {
+  if (oldVNode == null) {
+    mountChildren(newVNode.children, container, anchor)
+  } else {
+    patchChildren(oldVNode, newVNode, container, anchor)
+  }
+}
+
+const processCommentNode = (oldVNode, newVNode, container, anchor) => {
+  if (oldVNode == null) {
+    // 挂载
+    newVNode.el = hostCreateComment(newVNode.children)
+    hostInsert(newVNode.el, container, anchor)
+  } else {
+    // 无更新
+    newVNode.el = oldVNode.el
+  }
+}
+
+const processText = (oldVNode, newVNode, container, anchor) => {
+  // 挂载
+  if (oldVNode == null) {
+    newVNode.el = hostCreateText(newVNode.children)
+    hostInsert(newVNode.el, container, anchor)
+  } else {
+    const el = (newVNode.el = oldVNode.el!)
+    if (newVNode.children !== oldVNode.children) {
+      hostSetText(el, newVNode.children)
+    }
+  }
+}
+~~~
+
+`Fragment`类型的`vnode`暂时没搞定是个啥，处理方式也和`Text`和`Comment`类型的`vnode`不太一样，先不记录了，对于`Text`类型和`Comment`类型的节点逻辑类似，要做的事情有两个，一个是更新`newVNode`身上的`el`属性，再者就是操作dom。
+
+重点来记录一下对于`Element`节点和`Component`节点的操作
+
+
+
+### processElement函数
+
+~~~typescript
+const processElement = (oldVNode, newVNode, container, anchor) => {
+  if (oldVNode == null) {
+    // 挂载操作
+    mountElement(newVNode, container, anchor)
+  } else {
+    // 更新操作
+    patchElement(oldVNode, newVNode)
+  }
+}
+
+const mountElement = (vnode, container, anchor) => {
+  const { type, props, shapeFlag } = vnode
+  // 1. 创建 element
+  const el = (vnode.el = hostCreateElement(type))
+  // 2. 设置文本
+  if (shapeFlag & ShapeFlags.TEXT_CHILDREN) {
+    hostSetElementText(el, vnode.children)
+  } else if (shapeFlag & ShapeFlags.ARRAY_CHILDREN) {
+    // 设置 Array 子节点
+    mountChildren(vnode.children, el, anchor)
+  }
+  // 3. 设置props
+  if (props) {
+    for (const key in props) {
+      hostPatchProp(el, key, null, props[key])
+    }
+  }
+  // 4. 插入
+  hostInsert(el, container, anchor)
+}
+
+const patchElement = (oldVNode, newVNode) => {
+  const el = (newVNode.el = oldVNode.el)
+  const oldProps = oldVNode.props || EMPTY_OBJ
+  const newProps = newVNode.props || EMPTY_OBJ
+
+  patchChildren(oldVNode, newVNode, el, null)
+
+  patchProps(el, newVNode, oldProps, newProps)
+}
+~~~
+
+#### 分析：
+
+`processElement`的逻辑就是根据`oldVNode`是否存在从而选择`mountElement`挂载还是`patchElement`更新
+
+不管挂载还是更新，核心就是把`vnode`所携带的信息反映到试图上，什么信息？就是`type`所代表的元素本身的种类，`props`所携带的元素本身的属性信息，以及`children`所携带的子节点的信息。无论挂载还是更新，都是处理这三者，这三者处理完即操作完成。
+
+所谓的`diff`算法，就是在`patchElement`函数中的`patchChildren`函数，即处理`children`属性的函数中进行的操作。
+
+
+
+### patchComponent函数
+

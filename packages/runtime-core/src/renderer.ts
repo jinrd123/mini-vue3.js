@@ -1,6 +1,9 @@
 import { EMPTY_OBJ, isString } from '@vue/shared'
+import { ReactiveEffect } from 'packages/reactivity/src/effect'
 import { ShapeFlags } from 'packages/shared/src/shapeFlags'
-import { normalizeVNode } from './componentRenderUtils'
+import { createComponentInstance, setupComponent } from './component'
+import { normalizeVNode, renderComponentRoot } from './componentRenderUtils'
+import { queuePreFlushCb } from './scheduler'
 import { Text, Comment, Fragment, isSameVNodeType } from './vnode'
 export interface RendererOptions {
   /**
@@ -44,6 +47,12 @@ function baseCreateRenderer(options: RendererOptions): any {
     setText: hostSetText,
     createComment: hostCreateComment
   } = options
+
+  const processComponent = (oldVNode, newVNode, container, anchor) => {
+    if (oldVNode == null) {
+      mountComponent(newVNode, container, anchor)
+    }
+  }
 
   const processFragment = (oldVNode, newVNode, container, anchor) => {
     if (oldVNode == null) {
@@ -163,6 +172,38 @@ function baseCreateRenderer(options: RendererOptions): any {
     }
   }
 
+  const mountComponent = (initialVNode, container, anchor) => {
+    initialVNode.component = createComponentInstance(initialVNode)
+    const instance = initialVNode.component
+
+    // 把h函数接收的component对象的render函数挂载到instance的render属性上
+    setupComponent(instance)
+
+    setupRenderEffect(instance, initialVNode, container, anchor)
+  }
+
+  const setupRenderEffect = (instance, initialVNode, container, anchor) => {
+    const componentUpdateFn = () => {
+      if (!instance.isMounted) {
+        const subTree = (instance.subTree = renderComponentRoot(instance))
+
+        patch(null, subTree, container, anchor)
+
+        initialVNode = subTree.el
+      } else {
+      }
+    }
+
+    const effect = (instance.effect = new ReactiveEffect(
+      componentUpdateFn,
+      () => queuePreFlushCb(update)
+    ))
+
+    const update = (instance.update = () => effect.run())
+
+    update()
+  }
+
   const mountElement = (vnode, container, anchor) => {
     const { type, props, shapeFlag } = vnode
     // 1. 创建 element
@@ -171,7 +212,8 @@ function baseCreateRenderer(options: RendererOptions): any {
     if (shapeFlag & ShapeFlags.TEXT_CHILDREN) {
       hostSetElementText(el, vnode.children)
     } else if (shapeFlag & ShapeFlags.ARRAY_CHILDREN) {
-      // ---------- 这里是不是漏下了 ----------
+      // 设置 Array 子节点
+      mountChildren(vnode.children, el, anchor)
     }
     // 3. 设置props
     if (props) {
@@ -196,7 +238,7 @@ function baseCreateRenderer(options: RendererOptions): any {
     if (oldVNode && !isSameVNodeType(oldVNode, newVNode)) {
       // 先unmount卸载，即容器中删除这个dom节点（vnode节点的el属性绑定了对应的dom元素，然后通过dom的parentNode拿到父dom，父dom执行removeChild完成卸载）
       unmount(oldVNode)
-      // 更新oldVNode为null，即container._value为null，那么下一次container再执行render时就会走挂载逻辑，而不是patch更新了
+      // 更新oldVNode为null，下面switch中进行具体情况的处理时，process函数中因为oldVNode为null，就会执行挂载逻辑，而非更新逻辑
       oldVNode = null
     }
 
@@ -215,6 +257,7 @@ function baseCreateRenderer(options: RendererOptions): any {
         if (shapeFlag & ShapeFlags.ELEMENT) {
           processElement(oldVNode, newVNode, container, anchor)
         } else if (shapeFlag & ShapeFlags.COMPONENT) {
+          processComponent(oldVNode, newVNode, container, anchor)
         }
     }
   }
