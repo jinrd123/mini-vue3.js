@@ -169,6 +169,18 @@ export function normalizeClass(value: unknown): string {
 
 回到`createVNode`函数中，第二步就是构造一个`shapeFlag`值，说白了就是一个数字，标识了`h`函数第一个入参`type`的类型，最后把处理好的`props`和`shapeFlag`传入`return createBaseVNode(type, props, children, shapeFlag)`，细心的话已经发现了：`h`函数的参数中，`createVNode`函数中处理了`props`属性，但是还没处理`children`参数，所以在`createBaseVNode`函数中，完成对`children`的处理并最终完成`vnode`节点的构造
 
+plus：我们只是对`class`和`style`进行增强处理，但并不意味着`props`中只能有`class`、`style`属性，类似于表单元素的`value`属性、`type`属性等是完完全全随意放在`props`对象中的，如下面的`h`函数调用：
+
+~~~typescript
+const vnode = h('textarea', {
+  class: 'test-class',
+  value: 'textarea value',
+  type: 'text'
+})
+~~~
+
+
+
 
 
 ### createBaseVNode函数
