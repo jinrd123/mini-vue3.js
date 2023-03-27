@@ -466,3 +466,208 @@ const patchElement = (oldVNode, newVNode) => {
 
 ### patchComponent函数
 
+~~~typescript
+const processComponent = (oldVNode, newVNode, container, anchor) => {
+  if (oldVNode == null) {
+    mountComponent(newVNode, container, anchor)
+  }
+}
+~~~
+
+#### 分析：
+
+暂时只实现了组件的挂载操作，即`oldVNode`如果为空，则执行`mountComponent`
+
+
+
+### mountComponent函数
+
+~~~typescript
+const mountComponent = (initialVNode, container, anchor) => {
+  // 生成组件实例
+  initialVNode.component = createComponentInstance(initialVNode)
+  // 浅拷贝，绑定同一块内存空间
+  const instance = initialVNode.component
+
+  // 标准化组件实例数据
+  setupComponent(instance)
+
+  // 设置组件渲染
+  setupRenderEffect(instance, initialVNode, container, anchor)
+}
+~~~
+
+#### 分析：
+
+`mountComponent`挂载组件的第一步就是给`vnode`节点上挂载一个`component`属性对象，这个属性对象通过`createComponentInstance`方法创建出来，说白了就是一个对象，代表了这个组件实例，上面有组件的各种信息属性，`createComponentInstance`：
+
+~~~typescript
+let uid = 0
+export function createComponentInstance(vnode) {
+	const type = vnode.type
+
+	const instance = {
+		uid: uid++, // 唯一标记
+		vnode, // 虚拟节点
+		type, // 组件类型
+		subTree: null!, // render 函数的返回值
+		effect: null!, // ReactiveEffect 实例
+		update: null!, // update 函数，触发 effect.run
+		render: null, // 组件内的 render 函数
+		// 生命周期相关
+		isMounted: false, // 是否挂载
+		bc: null, // beforeCreate
+		c: null, // created
+		bm: null, // beforeMount
+		m: null // mounted
+	}
+
+	return instance
+}
+~~~
+
+下面我们明确一下各个属性的来源：
+
+* `uid`没啥好说的，一个全局唯一编号；
+
+* `vnode`就是`h`函数创建的虚拟节点，也是我们`render`函数在页面渲染真实dom时真正用到的变量，在上面的`mountComponent`函数中在组件对应的`vnode`身上挂载的`component`属性，就是我们`createComponentInstance`执行完毕的返回值，即这里创建的`instance`对象。（`instance.vnode.component === instance`，形成循环引用，说白了就是让`instance`方便访问到对应的`vnode`节点，毕竟`vnode`节点才是`render`的核心，说不定后面哪里会用到）
+
+* `type`即为`h`函数的第一个参数，回忆一下`type`的取值：`Text(symbol对象) & Comment & Fragment`、`'div'(标签名字符串)`，还有一种就是对象，也就是代表组件类型，看如下`h`函数的调用：
+
+  ~~~js
+  // 作为h函数第一个参数 type，为对象，判定为有状态组件，shapeFlag为4
+  const component = {
+    render() {
+      const vnode1 = h('div', '这是一个 component')
+      return vnode1
+    }
+  }
+  
+  // 第二个参数children为undefined，flag为0
+  const vnode2 = h(component)
+  ~~~
+
+  对于上面`h`函数创建的`vnode`节点来说，其`type`属性就是上面的`component`对象，对象里面有`render`、以及后来还会增加的`data`、`mounted`等方法。
+
+* `subTree`即为`render`函数的返回值，即一个`vnode`对象。通过上面的`h`函数调用举例也能看出，一个组件的`render`函数，其返回值就是一个`vnode``
+
+* `render`、`bc(beforeCreate)`、`c(created)`、`bm(beforeMount)`、`m(mounted)`都是组件对象里的属性方法
+
+`createComponentInstance`创建（初始化）好`instance`实例之后，此时`instance`大部分属性还都是`null`的状态，`setupComponent(instance)`方法的作用就是对`instance`上的属性信息进行完善。
+
+
+
+### setupComponent函数
+
+~~~typescript
+export function setupComponent(instance) {
+  // 嵌套调用setupStatefulComponent
+  setupStatefulComponent(instance)
+}
+
+function setupStatefulComponent(instance) {
+  // 嵌套调用
+  finishComponentSetup(instance)
+}
+
+export function finishComponentSetup(instance) {
+  const Component = instance.type
+	
+  // 从type中取出render挂载到instance上
+  instance.render = Component.render
+	
+  // applyOption方法中挂载其它vue常用配置到instance身上
+  applyOptions(instance)
+}
+
+function applyOptions(instance: any) {
+  // 解构获取type身上的属性方法
+  const {
+    data: dataOptions,
+    beforeCreate,
+    created,
+    beforeMount,
+    mounted
+  } = instance.type
+	
+  // 若存在beforeCreate生命周期，执行
+  if (beforeCreate) {
+    callHook(beforeCreate)
+  }
+	
+  // 存在data函数（一般return一个对象），我们拿到data返回的对象变成reactive响应式对象后挂载到instance身上
+  if (dataOptions) {
+    const data = dataOptions()
+    if (isObject(data)) {
+      instance.data = reactive(data)
+    }
+  }
+	
+  // 若存在created生命周期，执行
+  if (created) {
+    callHook(created)
+  }
+
+  function registerLifecycleHook(register: Function, hook?: Function) {
+    register(hook, instance)
+  }
+	
+  // registerLifecycleHook函数的作用就是注册其它的那些生命周期，说白了就是把beforeCreate和created之外的那些生命周期挂载到instance身上，具体实现细节就不看了
+  registerLifecycleHook(onBeforeMount, beforeMount)
+  registerLifecycleHook(onMounted, mounted)
+}
+
+function callHook(hook: Function) {
+  hook()
+}
+~~~
+
+#### 分析：
+
+`setupComponent`函数本身的逻辑并不复杂，说白了就是去**完善`instance`对象的信息**，完善信息具体是什么? 这些信息从哪里来?
+
+ `instance`对象的`type`（传给`h`函数第一个参数，也就是那个包含了`render`、`data`、`beforeMount...`的对象）里的这些对象，把他们拿出来，挂载到`instance`对象身上。自然信息来源就是`instance`对象身上的`type`属性。
+
+具体细节看上面代码注释吧
+
+
+
+### setupRenderEffect函数
+
+`mountComponent`函数中执行完了`setupComponent`逻辑之后，就是`setupRenderEffect(instance, initialVNode, container, anchor)`了
+
+~~~typescript
+const setupRenderEffect = (instance, initialVNode, container, anchor) => {
+  const componentUpdateFn = () => {
+    if (!instance.isMounted) {
+      const { bm, m } = instance
+
+      if (bm) {
+        bm()
+      }
+
+      const subTree = (instance.subTree = renderComponentRoot(instance))
+
+      patch(null, subTree, container, anchor)
+
+      initialVNode = subTree.el
+
+      if (m) {
+        m()
+      }
+    } else {
+    }
+  }
+
+  const effect = (instance.effect = new ReactiveEffect(
+    componentUpdateFn,
+    () => queuePreFlushCb(update)
+  ))
+
+  const update = (instance.update = () => effect.run())
+
+  update()
+}
+~~~
+
+#### 分析：
