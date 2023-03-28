@@ -634,24 +634,47 @@ function callHook(hook: Function) {
 
 ### setupRenderEffect函数
 
-`mountComponent`函数中执行完了`setupComponent`逻辑之后，就是`setupRenderEffect(instance, initialVNode, container, anchor)`了
+`mountComponent`函数中执行完了`setupComponent`逻辑之后，就是`setupRenderEffect(instance, initialVNode, container, anchor)`了（组件渲染逻辑）
 
 ~~~typescript
 const setupRenderEffect = (instance, initialVNode, container, anchor) => {
   const componentUpdateFn = () => {
     if (!instance.isMounted) {
       const { bm, m } = instance
-
+			
+      // 执行beforeMount生命周期函数
       if (bm) {
         bm()
       }
+			
+      // 给instance组件对象挂载了subTree属性，即renderComponentRoot函数的返回值，说白了就是执行render函数，返回render函数创建的vnode节点，但是这个render函数的this指向通过call方法修改为了instance.data，这也就是render函数可以使用data中数据的原因
+      // （下面包装render!.call(data)的normalizeVNode函数可以忽略）
+      // ***** 重点 *****，我们不是先创建了一个ReactiveEffect对象，然后才接着执行的这里的逻辑嘛（update => effect.run），这里是data（data挂载到instance对象上时已经被包装为Reactive响应式对象了）的响应式属性就会收集刚刚创建的ReactiveEffect依赖，也就是说，组件用到的响应式数据以后触发set行为时，这里的componentUpdateFn函数还会执行（queuePreFlushCb(update)本质上也是执行componentUpdateFn）
+      /*
+        export function renderComponentRoot(instance) {
+          const { vnode, render, data } = instance
 
+          let result
+
+          try {
+            if (vnode.shapeFlag & ShapeFlags.STATEFUL_COMPONENT) {
+              result = normalizeVNode(render!.call(data))
+            }
+          } catch (error) {
+            console.error(error)
+          }
+
+          return result
+        }
+      */
       const subTree = (instance.subTree = renderComponentRoot(instance))
-
+			
+      // 执行patch函数对vnode节点进行挂载，subTree就是组件vnode，说白了就是组件的render函数中返回的vnode
       patch(null, subTree, container, anchor)
 
       initialVNode = subTree.el
-
+			
+      // 执行mounted生命周期函数
       if (m) {
         m()
       }
@@ -671,3 +694,12 @@ const setupRenderEffect = (instance, initialVNode, container, anchor) => {
 ~~~
 
 #### 分析：
+
+说白了`setupRenderEffect`函数体的逻辑就两点：
+
+1. 创建一个`ReactiveEffect`对象`effect`
+2. 执行`update`函数，`updata`函数实际上就是执行`effect.run()`，即执行`ReactiveEffect`对象的第一个参数函数`componentUpdateFn`。
+
+我们看一下`componentUpdateFn`函数做了什么，看上面的代码注释
+
+总结来说`setupRenderEffect`函数做的事情就是创建一个依赖对象，然后用`data`去调用`render`，自然而然`data`数据收集到了依赖对象，`patch`函数渲染`render`函数创建的`vnode`完成组件挂载（当然在挂载前后合适的时机分别调用`bm`和`m`生命周期）
