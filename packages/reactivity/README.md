@@ -273,7 +273,7 @@ export class ComputedRefImpl<T> {
 * `ComputedRefImpl`被`get`之后，`_value`已经被计算，`_dirty`为`false`，此时访问`ComputedRefImpl`对象的值返沪`_value`即可，无需重新计算
 * 一旦（收集了`ComputedRefImpl.effect`的）响应式对象发生改变，就需要把`_dirty`置为`true`，让`ComputedRefImpl`下一次被get时重新计算`_value`
 
-
+上面也就是所谓的`computed`缓存数据，即读取一个`computed`响应式数据的时候不要每次都重新计算（重新计算即计算`_value`的操作，对应上面的`---- 2 ----`），因为计算操作会触发所有`computed`对象所依赖的响应式数据的`get`行为，造成性能浪费。
 
 
 
