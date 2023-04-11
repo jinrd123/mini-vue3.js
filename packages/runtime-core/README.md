@@ -549,7 +549,7 @@ export function createComponentInstance(vnode) {
 
   对于上面`h`函数创建的`vnode`节点来说，其`type`属性就是上面的`component`对象，对象里面有`render`、以及后来还会增加的`data`、`mounted`等方法。
 
-* `subTree`即为`render`函数的返回值，即一个`vnode`对象。通过上面的`h`函数调用举例也能看出，一个组件的`render`函数，其返回值就是一个`vnode``
+* `subTree`即为`render`函数的返回值，即一个`vnode`对象。通过上面的`h`函数调用举例也能看出，一个组件的`render`函数，其返回值就是一个`vnode`
 
 * `render`、`bc(beforeCreate)`、`c(created)`、`bm(beforeMount)`、`m(mounted)`都是组件对象里的属性方法
 
@@ -595,6 +595,7 @@ function applyOptions(instance: any) {
     callHook(beforeCreate)
   }
 	
+  // 重点细节：data挂载到instance对象上之前进行响应式化
   // 存在data函数（一般return一个对象），我们拿到data返回的对象变成reactive响应式对象后挂载到instance身上
   if (dataOptions) {
     const data = dataOptions()
