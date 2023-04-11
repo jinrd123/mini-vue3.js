@@ -195,12 +195,27 @@ function baseCreateRenderer(options: RendererOptions): any {
 
         patch(null, subTree, container, anchor)
 
-        initialVNode = subTree.el
-
         if (m) {
           m()
         }
+
+        initialVNode = subTree.el
+
+        instance.isMounted = true // 使再次触发componentUpdateFn函数时进入else的逻辑
       } else {
+        let { next, vnode } = instance
+        if (!next) {
+          next = vnode
+        }
+
+        const nextTree = renderComponentRoot(instance) // 拿着新数据创建对应的新的vnode节点
+
+        const prevTree = instance.subTree
+        instance.subTree = nextTree // 更新instance的subTree属性，就是对当前vnode节点的记录
+
+        patch(prevTree, nextTree, container, anchor) // patch函数：传入新旧vnode节点，（经过对比后）真正的去修改dom
+
+        next.el = nextTree.el
       }
     }
 

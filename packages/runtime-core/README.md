@@ -704,3 +704,64 @@ const setupRenderEffect = (instance, initialVNode, container, anchor) => {
 我们看一下`componentUpdateFn`函数做了什么，看上面的代码注释
 
 总结来说`setupRenderEffect`函数做的事情就是创建一个依赖对象，然后用`data`去调用`render`，自然而然`data`数据收集到了依赖对象，`patch`函数渲染`render`函数创建的`vnode`完成组件挂载（当然在挂载前后合适的时机分别调用`bm`和`m`生命周期）
+
+
+
+
+
+# 过程性记录
+
+
+
+## 组件中数据变化组件重新渲染的逻辑
+
+
+
+定位到上面`mountComponent`组件挂载函数，挂载的最后一步是`setupRenderEffect`函数的执行，这个整体的一个逻辑是创建了一个`ReactiveEffect`副作用对象，然后手动触发`componentUpdateFn`，在`componentUpdateFn`执行过程中`componentUpdateFn -> renderComponentRoot -> render!.call(data)`，说白了就是响应式数据`data`调用`render`函数，这个过程中如果`render`函数中有对`data`中属性的`get`行为，自然会触发响应式属性的`track`依赖收集，从而收集到了我们创建的这个`ReactiveEffect`对象。
+
+以后如果`data`数据的`set`行为被触发，自然就会执行这个`ReactiveEffect`副作用对象，说白了还是执行`componentUpdateFn`函数，但是由于组件的挂载标识属性`instance.isMounted`为`true`，所以会走`else`的逻辑：
+
+~~~typescript
+const componentUpdateFn = () => {
+  if (!instance.isMounted) {
+    const { bm, m } = instance
+
+    if (bm) {
+      bm()
+    }
+
+    const subTree = (instance.subTree = renderComponentRoot(instance))
+
+    patch(null, subTree, container, anchor)
+
+    if (m) {
+      m()
+    }
+
+    initialVNode = subTree.el
+
+    instance.isMounted = true // 使再次触发componentUpdateFn函数时进入else的逻辑
+  } else {
+    // 响应式数据set，会走这里往下的逻辑
+    let { next, vnode } = instance
+    if (!next) {
+      next = vnode
+    }
+
+    const nextTree = renderComponentRoot(instance) // 拿着新数据创建对应的新的vnode节点
+
+    const prevTree = instance.subTree
+    instance.subTree = nextTree // 更新instance的subTree属性，就是对当前vnode节点的记录
+
+    patch(prevTree, nextTree, container, anchor) // patch函数：传入新旧vnode节点，（经过对比后）真正的去修改dom
+
+    next.el = nextTree.el
+  }
+}
+~~~
+
+`else`中做了啥？
+
+首先第一步`renderComponentRoot(instance)`。注释：`renderComponentRoot`函数在上面`setupRenderEffect`函数模块的注释里有，说白了就是拿着`data`去执行`render`，这里的`render`不是咱`vue`里的`render`函数，而是组件对象里的那个`render`函数，说白了就是调用`h`函数去创建`vnode`对象，所以，因为`instance.data`已经变了，所以`renderComponentRoot(instance)`就相当于拿着新的`data`去执行`h`函数创建一个新的`vnode`节点。
+
+第二步，`patch(prevTree, nextTree, container, anchor)`，注释里写的很清楚了，拿着新旧`vnode`去正儿八经的修改`dom`了。
