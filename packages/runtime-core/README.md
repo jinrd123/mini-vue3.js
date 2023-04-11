@@ -765,3 +765,106 @@ const componentUpdateFn = () => {
 首先第一步`renderComponentRoot(instance)`。注释：`renderComponentRoot`函数在上面`setupRenderEffect`函数模块的注释里有，说白了就是拿着`data`去执行`render`，这里的`render`不是咱`vue`里的`render`函数，而是组件对象里的那个`render`函数，说白了就是调用`h`函数去创建`vnode`对象，所以，因为`instance.data`已经变了，所以`renderComponentRoot(instance)`就相当于拿着新的`data`去执行`h`函数创建一个新的`vnode`节点。
 
 第二步，`patch(prevTree, nextTree, container, anchor)`，注释里写的很清楚了，拿着新旧`vnode`去正儿八经的修改`dom`了。
+
+
+
+
+
+## 组合式api——setup函数的实现
+
+先看一下对应的测试用例：
+
+~~~js
+// 本测例旨在测试setup函数
+const { reactive, h, render } = Vue
+
+const component = {
+  setup() {
+    const obj = reactive({
+      name: '张三'
+    })
+
+    // setTimeout(() => {
+    //   obj.name = '李四'
+    // }, 2000);
+
+    return () => h('div', obj.name)
+  }
+}
+
+const vnode = h(component)
+// 挂载
+render(vnode, document.querySelector('#app'))
+~~~
+
+首先明确，这里我们要实现的`setup`配置项是组件对象（如上`component`）中与配置式api同级的一个属性，`setup`与`render`配置项返回值一样，都是返回`h`函数的调用，这里突然领悟了点东西，配置型api中组件对象不管是`data`等配置项说白了都是辅佐`render`配置项的，组件渲染出来个啥，核心还是`render`配置项，下面来个配置型api中组件对象的例子：
+
+~~~js
+const { h, render } = Vue
+
+const component = {
+  data() {
+    return {
+      msg: 'hello component'
+    }
+  },
+  render() {
+    return h('div', this.msg)
+  }
+}
+
+const vnode = h(component)
+// 挂载
+render(vnode, document.querySelector('#app'))
+~~~
+
+所以说，我们现在要实现`setup`组合式api（其他配置项啥都不要），可以明确一点就是，`setup`函数必须也要提供配置型api组件对象中的`render`函数，所以`setup`函数的返回值是一个“`render`函数”。
+
+上面的铺垫已经足够了，正式进入`setup`的实现：
+
+我们上面分析了`setupComponent`函数，它是`mountComponet`组件挂载的一环，主要逻辑目标是给`instance`组件实例对象上挂载属性，比如`render`属性、生命周期相关回调、`data`等。
+
+现在我们修改`setupComponent`函数中的逻辑，准确的说是`setupStatefulComponent`函数，不重要，本身就是一层嵌套，曾经的代码：
+
+~~~typescript
+export function setupComponent(instance) {
+  setupStatefulComponent(instance)
+}
+function setupStatefulComponent(instance) {
+  finishComponentSetup(instance)
+}
+~~~
+
+以前的`setupStatefulComponent`是直接调用`finishComponentSetup`函数，然后在`finishComponentSetup`函数中完成`instance`对象各种属性的挂载，现在的代码如下：
+
+~~~typescript
+function setupStatefulComponent(instance) {
+  const Component = instance.type
+
+  const { setup } = Component
+
+  if (setup) {
+    const setupResult = setup()
+    handleSetupResult(instance, setupResult)
+  } else {
+    finishComponentSetup(instance)
+  }
+}
+
+export function handleSetupResult(instance, setupResult) {
+  if (isFunction(setupResult)) {
+    instance.render = setupResult
+  }
+  finishComponentSetup(instance)
+}
+~~~
+
+总结，说白了就是在组件对象中通过解构的方式看看有没有`setup`配置项，如果有的话，就调用`setup`函数，说白了`setup`返回值就是曾经的`render`配置项啊，我们拿到`render`配置项，然后挂载到`instance`对象上，然后再调用`finishComponentSetup`（这就和以前的逻辑完全一样了，继续完善`instance`对象身上的其他的配置项）
+
+说白了写了`setup`的组件对象与配置型对象的不同就在于`setup`组合式组件拿到`render`属性的方法是调用一下`setup`函数。
+
+最后，执行完`setupComponent`函数（`instance`对象属性完善），在执行`setupRenderEffect`时（执行`render`函数）就完全一样了，对于`setup`型组件，因为没有配置型属性，所以压根也解构不出来，当然如果写了配置项与`setup`共存，配置项当然也会正常执行。
+
+#### `setup`函数的自洽
+
+所谓的`setup`自洽就是说我们的配置型api为了在执行`render`函数、生命周期等配置项方法时正确访问`data`中的数据，都需要手动改变这些方法的`this`指向，比如生命周期挂载到`instance`实例上时通过`bind`修改`this`，`render`方法的执行通过`call`改变`this`，但是在`setup`中，我们所有声明的变量，不管是响应式还是非响应式，在`setup`中调用的方法（比如`render`函数，以及`onMounted`等组合式api）都可以直接访问而无需改变`this`指向。因为作用域链已经决定了，`setup`中的各种函数，都可以访问`setup`顶层定义的变量值。
