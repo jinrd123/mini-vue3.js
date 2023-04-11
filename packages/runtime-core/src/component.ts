@@ -81,6 +81,7 @@ function applyOptions(instance: any) {
   }
 
   function registerLifecycleHook(register: Function, hook?: Function) {
+    // 修改生命周期函数的this指向为Reactive(data)
     register(hook?.bind(instance.data), instance)
   }
 
@@ -90,5 +91,6 @@ function applyOptions(instance: any) {
 }
 
 function callHook(hook: Function, proxy) {
+  // 通过bind函数修改生命周期函数的this指向从而让生命周期函数访问data中的数据
   hook.bind(proxy)()
 }
