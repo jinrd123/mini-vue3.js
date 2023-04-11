@@ -1,5 +1,5 @@
 import { reactive } from '@vue/reactivity'
-import { isObject } from '@vue/shared'
+import { isFunction, isObject } from '@vue/shared'
 import { onBeforeMount, onMounted } from './apiLifecycle'
 
 let uid = 0
@@ -38,7 +38,22 @@ export function setupComponent(instance) {
 }
 
 function setupStatefulComponent(instance) {
-  // 嵌套调用
+  const Component = instance.type
+
+  const { setup } = Component
+
+  if (setup) {
+    const setupResult = setup()
+    handleSetupResult(instance, setupResult)
+  } else {
+    finishComponentSetup(instance)
+  }
+}
+
+export function handleSetupResult(instance, setupResult) {
+  if (isFunction(setupResult)) {
+    instance.render = setupResult
+  }
   finishComponentSetup(instance)
 }
 
@@ -46,7 +61,9 @@ export function finishComponentSetup(instance) {
   const Component = instance.type
 
   // 从type中取出render挂载到instance上
-  instance.render = Component.render
+  if (!instance.render) {
+    instance.render = Component.render
+  }
 
   // applyOption方法中挂载其它vue常用配置到instance身上
   applyOptions(instance)
