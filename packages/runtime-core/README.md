@@ -868,3 +868,95 @@ export function handleSetupResult(instance, setupResult) {
 #### `setup`函数的自洽
 
 所谓的`setup`自洽就是说我们的配置型api为了在执行`render`函数、生命周期等配置项方法时正确访问`data`中的数据，都需要手动改变这些方法的`this`指向，比如生命周期挂载到`instance`实例上时通过`bind`修改`this`，`render`方法的执行通过`call`改变`this`，但是在`setup`中，我们所有声明的变量，不管是响应式还是非响应式，在`setup`中调用的方法（比如`render`函数，以及`onMounted`等组合式api）都可以直接访问而无需改变`this`指向。因为作用域链已经决定了，`setup`中的各种函数，都可以访问`setup`顶层定义的变量值。
+
+
+
+
+
+## diff算法前置——Fragment与Element的区别 & diff背景
+
+首先在`vue`中`Fragment`作为一种基础的节点类型（`Text`、`Comment`、`div`等字符串以及用象标识的组件），我们创建了一个`Symbol`对象
+
+~~~js
+export const Fragment = Symbol('Fragment')
+~~~
+
+这个对象会作为对应`Fragment`标签的`vnode`的`type`属性
+
+`<Fragment />`在vue中作用就是虚拟包裹，但不进行渲染
+
+渲染函数`render`的核心是什么？`patch`函数，然后`patch`函数里面就会根据`newVNode`的`type`属性进行`switch`，然后每种类型执行对应的`process`函数，可以瞄一眼`patch`函数的结构：
+
+~~~typescript
+const patch = (oldVNode, newVNode, container, anchor = null) => {
+  if (oldVNode === newVNode) {
+    return
+  }
+  if (oldVNode && !isSameVNodeType(oldVNode, newVNode)) {
+    unmount(oldVNode)
+    oldVNode = null
+  }
+
+  const { type, shapeFlag } = newVNode
+  switch (type) {
+    case Text:
+      processText(oldVNode, newVNode, container, anchor)
+      break
+    case Comment:
+      processCommentNode(oldVNode, newVNode, container, anchor)
+      break
+    case Fragment:
+      processFragment(oldVNode, newVNode, container, anchor)
+      break
+    default:
+      if (shapeFlag & ShapeFlags.ELEMENT) {
+        processElement(oldVNode, newVNode, container, anchor)
+      } else if (shapeFlag & ShapeFlags.COMPONENT) {
+        processComponent(oldVNode, newVNode, container, anchor)
+      }
+  }
+}
+~~~
+
+这里我们重点看一下`processFragment`与`processElement`两个函数的区别：
+
+`processFragment`:
+
+~~~typescript
+const processFragment = (oldVNode, newVNode, container, anchor) => {
+  if (oldVNode == null) {
+    mountChildren(newVNode.children, container, anchor)
+  } else {
+    patchChildren(oldVNode, newVNode, container, anchor)
+  }
+}
+~~~
+
+`processElement`:
+
+~~~typescript
+const processElement = (oldVNode, newVNode, container, anchor) => {
+  if (oldVNode == null) {
+    // 挂载操作
+    mountElement(newVNode, container, anchor)
+  } else {
+    // 更新操作
+    patchElement(oldVNode, newVNode)
+  }
+}
+
+// patchElement
+const patchElement = (oldVNode, newVNode) => {
+  const el = (newVNode.el = oldVNode.el)
+  const oldProps = oldVNode.props || EMPTY_OBJ
+  const newProps = newVNode.props || EMPTY_OBJ
+
+  patchChildren(oldVNode, newVNode, el, null)
+
+  patchProps(el, newVNode, oldProps, newProps)
+}
+~~~
+
+看了上面的代码，总结来说就是：对于`Fragment`类型的`vnode`的处理，实际上就是直接操作`vnode.children`，然后对于`Element`类型的`vnode`，我们就要先创建`vnode`本身对应的`dom`元素，然后给这个创建的`dom`元素添加属性以及挂载`children`等
+
+上面写的有点多了，与`diff`似乎走远了，主要目的就是清楚`diff`的一个使用背景，**总结：对于`Fragment`和`Element`类型的`vnode`需要执行`patchChildren`操作，即根据`children`属性进行打补丁，`patchChildren`函数定义：`const patchChildren = (oldVNode, newVNode, container, anchor)`，我们的`diff`算法就是在比对`newVNode`与`oldVNode`过程中采用的算法，以在真正操作`dom`之前找到一种较优的更新策略。**
