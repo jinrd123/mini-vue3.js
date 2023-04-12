@@ -44,7 +44,8 @@ function createBaseVNode(type, props, children, shapeFlag) {
     __v_isVNode: true,
     type,
     props,
-    shapeFlag
+    shapeFlag,
+    key: props?.key || null
   } as VNode
 
   // normalizeChildren进一步完善（normalize：规范化）vnode.shapeFlag的信息
