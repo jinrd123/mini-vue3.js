@@ -135,6 +135,7 @@ function baseCreateRenderer(options: RendererOptions): any {
       if (prevShapeFlag & ShapeFlags.ARRAY_CHILDREN) {
         if (shapeFlag & ShapeFlags.ARRAY_CHILDREN) {
           // TODO: diff
+          patchKeyedChildren(c1, c2, container, anchor)
         } else {
           // TODO: 卸载
         }
@@ -147,6 +148,31 @@ function baseCreateRenderer(options: RendererOptions): any {
           // TODO: 单独新子节点的挂载
         }
       }
+    }
+  }
+
+  const patchKeyedChildren = (
+    oldChildren,
+    newChildren,
+    container,
+    parentAnchor
+  ) => {
+    let i = 0
+    const newChildrenLength = newChildren.length
+    let oldChildrenEnd = oldChildren.length - 1
+    let newChildrenEnd = newChildrenLength - 1
+
+    // 1. 自前向后
+    // 遍历children数组中的相同下标的每一项（都是一个vnode），如果isSameVNodeType(oldVNode, newVNode)，就进行patch(oldVNode, newVNode, container, null)
+    while (i <= oldChildrenEnd && i <= newChildrenEnd) {
+      const oldVNode = oldChildren[i]
+      const newVNode = normalizeVNode(newChildren[i])
+      if (isSameVNodeType(oldVNode, newVNode)) {
+        patch(oldVNode, newVNode, container, null)
+      } else {
+        break
+      }
+      i++
     }
   }
 
